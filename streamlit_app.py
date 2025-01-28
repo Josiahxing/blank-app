@@ -124,10 +124,18 @@ if st.button("Process Order Numbers"):
         references_csv = process_order_numbers(order_numbers)
         final_output_csv = process_asn_file(io.BytesIO(references_csv), asn_file)
         st.success("Data has been successfully processed!")
+        
         st.download_button(
-            label="Download Processed CSV",
+            label="Download Tracking Information",
+            data=references_csv,
+            file_name="Tracking_Information.csv",
+            mime="text/csv"
+        )
+        
+        st.download_button(
+            label="Download Audit CSV",
             data=final_output_csv,
-            file_name="output.csv",
+            file_name="Audit.csv",
             mime="text/csv"
         )
     else:
