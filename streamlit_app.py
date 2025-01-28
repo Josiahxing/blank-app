@@ -123,20 +123,25 @@ if st.button("Process Order Numbers"):
         order_numbers = [num.strip() for num in order_numbers_input.split('\n') if num.strip()]
         references_csv = process_order_numbers(order_numbers)
         final_output_csv = process_asn_file(io.BytesIO(references_csv), asn_file)
+        
+        # Store the CSV data in session state
+        st.session_state['references_csv'] = references_csv
+        st.session_state['final_output_csv'] = final_output_csv
+        
         st.success("Data has been successfully processed!")
-        
-        st.download_button(
-            label="Download Tracking Information",
-            data=references_csv,
-            file_name="Tracking_Information.csv",
-            mime="text/csv"
-        )
-        
-        st.download_button(
-            label="Download Audit CSV",
-            data=final_output_csv,
-            file_name="Audit.csv",
-            mime="text/csv"
-        )
-    else:
-        st.error("Please enter or scan order numbers and upload the ASN file.")
+
+# Check if the CSV data is available in session state
+if 'references_csv' in st.session_state and 'final_output_csv' in st.session_state:
+    st.download_button(
+        label="Download Tracking Information",
+        data=st.session_state['references_csv'],
+        file_name="Tracking_Information.csv",
+        mime="text/csv"
+    )
+    
+    st.download_button(
+        label="Download Audit CSV",
+        data=st.session_state['final_output_csv'],
+        file_name="Audit.csv",
+        mime="text/csv"
+    )
