@@ -111,6 +111,9 @@ def process_asn_file(references_csv, asn_csv):
             if cisco_reference in individual_references:
                 matching_rows.append(row)
 
+    # Debug: Print matching rows
+    st.write("Matching Rows:", matching_rows)
+
     # Save the matching rows to a new CSV file
     output_csv = io.StringIO()
     writer = csv.writer(output_csv)
