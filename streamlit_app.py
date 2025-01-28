@@ -74,7 +74,7 @@ def process_order_numbers(order_numbers):
         writer.writerow(row)
 
     output_csv.seek(0)
-    return output_csv
+    return output_csv.getvalue().encode('utf-8')
 
 st.title("Order Tracking Information Extractor")
 
