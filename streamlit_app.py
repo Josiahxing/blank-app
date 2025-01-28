@@ -76,20 +76,59 @@ def process_order_numbers(order_numbers):
     output_csv.seek(0)
     return output_csv.getvalue().encode('utf-8')
 
+def process_asn_file(references_csv, asn_csv):
+    # Read the references from the CSV file and create individual rows for each comma-separated reference
+    individual_references = []
+    references_csv.seek(0)
+    reader = csv.reader(io.StringIO(references_csv.read().decode('utf-8')))
+    headers = next(reader)
+    order_numbers = headers[1:]
+    
+    for row in reader:
+        if row[0] == "ALL REFERENCES":
+            for i, order_number in enumerate(order_numbers):
+                references = row[i + 1].split(', ')
+                for reference in references:
+                    individual_references.append(reference.replace('-', '/'))
+
+    # Read the ASN file and cross-reference with the individual references
+    matching_rows = []
+    asn_csv.seek(0)
+    reader = csv.reader(io.StringIO(asn_csv.read().decode('utf-8')))
+    cisco_headers = next(reader)
+    
+    for row in reader:
+        if len(row) > 5:
+            cisco_reference = row[5].replace('-', '/')
+            if cisco_reference in individual_references:
+                matching_rows.append(row)
+
+    # Save the matching rows to a new CSV file
+    output_csv = io.StringIO()
+    writer = csv.writer(output_csv)
+    writer.writerow(cisco_headers)
+    writer.writerows(matching_rows)
+
+    output_csv.seek(0)
+    return output_csv.getvalue().encode('utf-8')
+
 st.title("Order Tracking Information Extractor")
 
 order_numbers_input = st.text_area("Scan or Enter Order Numbers (one per line)")
 
+asn_file = st.file_uploader("Upload ASN File", type="csv")
+
 if st.button("Process Order Numbers"):
-    if order_numbers_input:
+    if order_numbers_input and asn_file:
         order_numbers = [num.strip() for num in order_numbers_input.split('\n') if num.strip()]
-        output_csv = process_order_numbers(order_numbers)
+        references_csv = process_order_numbers(order_numbers)
+        final_output_csv = process_asn_file(io.BytesIO(references_csv), asn_file)
         st.success("Data has been successfully processed!")
         st.download_button(
             label="Download Processed CSV",
-            data=output_csv,
+            data=final_output_csv,
             file_name="output.csv",
             mime="text/csv"
         )
     else:
-        st.error("Please enter or scan order numbers.")
+        st.error("Please enter or scan order numbers and upload the ASN file.")
