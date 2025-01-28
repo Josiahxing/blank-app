@@ -2,19 +2,9 @@ import streamlit as st
 import requests
 from lxml import etree
 import csv
-import os
+import io
 
-def process_csv(input_csv_path):
-    # Initialize a list to store order numbers
-    order_numbers = []
-
-    # Read the order numbers from the first column of the CSV file
-    with open(input_csv_path, mode='r', encoding='utf-8-sig') as file:
-        reader = csv.reader(file)
-        for row in reader:
-            if row:  # Check if the row is not empty
-                order_numbers.append(row[0])
-
+def process_order_numbers(order_numbers):
     # Base URL
     base_url = 'https://customeraccess.trans-expedite.com/Tracking/Login/Login.aspx?QuickViewNumber='
 
@@ -68,40 +58,38 @@ def process_csv(input_csv_path):
             st.error(f"Failed to retrieve data for order number {order_number}. Status code: {response.status_code}")
 
     # Save the extracted data to a CSV file with headers
-    output_csv_path = 'output.csv'
-    with open(output_csv_path, mode='w', newline='', encoding='utf-8') as file:
-        writer = csv.writer(file)
-        # Write the header
-        header = ["Tracking Information", "ACTUAL DELIVERY DATE", "EXPECTED DELIVERY DATE", "ALL REFERENCES", "SIGNATURE"]
-        writer.writerow(header)
-        
-        # Write the data rows
-        for order_number in order_numbers:
-            row = [order_number, 
-                   data_dict[order_number]["ACTUAL DELIVERY DATE"], 
-                   data_dict[order_number]["EXPECTED DELIVERY DATE"], 
-                   data_dict[order_number]["ALL REFERENCES"], 
-                   data_dict[order_number]["SIGNATURE"]]
-            writer.writerow(row)
+    output_csv = io.StringIO()
+    writer = csv.writer(output_csv)
+    # Write the header
+    header = ["Tracking Information", "ACTUAL DELIVERY DATE", "EXPECTED DELIVERY DATE", "ALL REFERENCES", "SIGNATURE"]
+    writer.writerow(header)
+    
+    # Write the data rows
+    for order_number in order_numbers:
+        row = [order_number, 
+               data_dict[order_number]["ACTUAL DELIVERY DATE"], 
+               data_dict[order_number]["EXPECTED DELIVERY DATE"], 
+               data_dict[order_number]["ALL REFERENCES"], 
+               data_dict[order_number]["SIGNATURE"]]
+        writer.writerow(row)
 
-    return output_csv_path
+    output_csv.seek(0)
+    return output_csv
 
 st.title("Order Tracking Information Extractor")
 
-uploaded_file = st.file_uploader("Choose a CSV file", type="csv")
+order_numbers_input = st.text_area("Scan or Enter Order Numbers (one per line)")
 
-if uploaded_file is not None:
-    input_csv_path = os.path.join("uploads", uploaded_file.name)
-    with open(input_csv_path, "wb") as f:
-        f.write(uploaded_file.getbuffer())
-    st.success("File uploaded successfully!")
-
-    if st.button("Process File"):
-        output_csv_path = process_csv(input_csv_path)
-        st.success(f"Data has been successfully saved to {output_csv_path}")
+if st.button("Process Order Numbers"):
+    if order_numbers_input:
+        order_numbers = [num.strip() for num in order_numbers_input.split('\n') if num.strip()]
+        output_csv = process_order_numbers(order_numbers)
+        st.success("Data has been successfully processed!")
         st.download_button(
             label="Download Processed CSV",
-            data=open(output_csv_path, "rb").read(),
+            data=output_csv,
             file_name="output.csv",
             mime="text/csv"
         )
+    else:
+        st.error("Please enter or scan order numbers.")
