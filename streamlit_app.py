@@ -94,6 +94,9 @@ def process_asn_file(references_csv, asn_csv):
     # Replace all "/" with "-" in the individual references
     individual_references = [ref.replace('/', '-') for ref in individual_references]
 
+    # Debug: Print individual references
+    st.write("Individual References:", individual_references)
+
     # Read the ASN file and cross-reference with the individual references
     matching_rows = []
     asn_csv.seek(0)
@@ -103,6 +106,8 @@ def process_asn_file(references_csv, asn_csv):
     for row in reader:
         if len(row) > 5:
             cisco_reference = row[5].replace('/', '-')
+            # Debug: Print each reference being compared
+            st.write("Comparing:", cisco_reference)
             if cisco_reference in individual_references:
                 matching_rows.append(row)
 
