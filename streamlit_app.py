@@ -82,14 +82,11 @@ def process_asn_file(references_csv, asn_csv):
     references_csv.seek(0)
     reader = csv.reader(io.StringIO(references_csv.read().decode('utf-8')))
     headers = next(reader)
-    order_numbers = headers[1:]
     
     for row in reader:
-        if row[0] == "ALL REFERENCES":
-            for i, order_number in enumerate(order_numbers):
-                references = row[i + 1].split(', ')
-                for reference in references:
-                    individual_references.append(reference.replace('-', '/'))
+        references = row[3].split(', ')  # "ALL REFERENCES" is now the fourth column
+        for reference in references:
+            individual_references.append(reference.replace('-', '/'))
 
     # Replace all "/" with "-" in the individual references
     individual_references = [ref.replace('/', '-') for ref in individual_references]
