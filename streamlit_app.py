@@ -5,44 +5,46 @@ import re
 import tempfile
 from zipfile import ZipFile
 
-st.title("Bill of Lading PDF Renamer")
+st.title("Multi-PDF Bill of Lading Renamer")
 
 st.markdown("""
-Upload a PDF file containing multiple Bill of Lading pages.  
+Upload one or more PDF files containing Bill of Lading pages.  
 This app will extract each page, find the 15-digit Bill of Lading Number, and rename the page accordingly.  
 You will be able to download a ZIP file containing all renamed PDFs.
 """)
 
-uploaded_file = st.file_uploader("Upload a PDF file", type=["pdf"])
+uploaded_files = st.file_uploader("Upload PDF files", type=["pdf"], accept_multiple_files=True)
 
-if uploaded_file:
+if uploaded_files:
     with tempfile.TemporaryDirectory() as temp_dir:
-        input_pdf_path = os.path.join(temp_dir, uploaded_file.name)
-        with open(input_pdf_path, "wb") as f:
-            f.write(uploaded_file.read())
-
-        doc = fitz.open(input_pdf_path)
         saved_files = []
 
-        for page_num in range(len(doc)):
-            page = doc.load_page(page_num)
-            text = page.get_text()
+        for uploaded_file in uploaded_files:
+            input_pdf_path = os.path.join(temp_dir, uploaded_file.name)
+            with open(input_pdf_path, "wb") as f:
+                f.write(uploaded_file.read())
 
-            match = re.search(r'\b\d{15}\b', text)
-            if match:
-                bol_number = match.group(0)
-                output_path = os.path.join(temp_dir, f"{bol_number}.pdf")
+            doc = fitz.open(input_pdf_path)
 
-                new_doc = fitz.open()
-                new_doc.insert_pdf(doc, from_page=page_num, to_page=page_num)
-                new_doc.save(output_path)
-                new_doc.close()
+            for page_num in range(len(doc)):
+                page = doc.load_page(page_num)
+                text = page.get_text()
 
-                saved_files.append(output_path)
-            else:
-                st.warning(f"No Bill of Lading Number found on page {page_num + 1}")
+                match = re.search(r'\b\d{15}\b', text)
+                if match:
+                    bol_number = match.group(0)
+                    output_path = os.path.join(temp_dir, f"{bol_number}.pdf")
 
-        doc.close()
+                    new_doc = fitz.open()
+                    new_doc.insert_pdf(doc, from_page=page_num, to_page=page_num)
+                    new_doc.save(output_path)
+                    new_doc.close()
+
+                    saved_files.append(output_path)
+                else:
+                    st.warning(f"No Bill of Lading Number found on page {page_num + 1} of {uploaded_file.name}")
+
+            doc.close()
 
         zip_path = os.path.join(temp_dir, "renamed_bols.zip")
         with ZipFile(zip_path, 'w') as zipf:
