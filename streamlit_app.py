@@ -1,147 +1,58 @@
 import streamlit as st
-import requests
-from lxml import etree
-import csv
-import io
+import fitz  # PyMuPDF
+import os
+import re
+import tempfile
+from zipfile import ZipFile
 
-def process_order_numbers(order_numbers):
-    # Base URL
-    base_url = 'https://customeraccess.trans-expedite.com/Tracking/Login/Login.aspx?QuickViewNumber='
+st.title("Bill of Lading PDF Renamer")
 
-    # Initialize a dictionary to store all extracted data
-    data_dict = {order_number: {"ACTUAL DELIVERY DATE": "", "EXPECTED DELIVERY DATE": "", "ALL REFERENCES": "", "SIGNATURE": ""} for order_number in order_numbers}
+st.markdown("""
+Upload a PDF file containing multiple Bill of Lading pages.  
+This app will extract each page, find the 15-digit Bill of Lading Number, and rename the page accordingly.  
+You will be able to download a ZIP file containing all renamed PDFs.
+""")
 
-    # Loop through each order number and extract data
-    for order_number in order_numbers:
-        url = f"{base_url}{order_number}"
+uploaded_file = st.file_uploader("Upload a PDF file", type=["pdf"])
 
-        # Send a GET request to the URL
-        response = requests.get(url)
+if uploaded_file:
+    with tempfile.TemporaryDirectory() as temp_dir:
+        input_pdf_path = os.path.join(temp_dir, uploaded_file.name)
+        with open(input_pdf_path, "wb") as f:
+            f.write(uploaded_file.read())
 
-        # Check if the request was successful
-        if response.status_code == 200:
-            # Parse the HTML content with lxml
-            dom = etree.HTML(response.content)
+        doc = fitz.open(input_pdf_path)
+        saved_files = []
 
-            # Use XPath to find the specific data
-            actual_delivery_date_xpath = '//*[@id="AUTOGENBOOKMARK_6_b2a17b72-d1fb-49fc-b9da-27a6e5efe7e8"]/td[2]/div[3]'
-            expected_delivery_date_xpath = '//*[@id="AUTOGENBOOKMARK_6_b2a17b72-d1fb-49fc-b9da-27a6e5efe7e8"]/td[2]/div[1]'
-            all_references_xpath = '//*[@id="__bookmark_3"]'
-            signature_xpath = '//*[@id="AUTOGENBOOKMARK_17_fddaeca7-7857-4206-b07d-303cd52f9975"]/tbody/tr[4]/td[2]/div'
+        for page_num in range(len(doc)):
+            page = doc.load_page(page_num)
+            text = page.get_text()
 
-            actual_delivery_date_elements = dom.xpath(actual_delivery_date_xpath)
-            expected_delivery_date_elements = dom.xpath(expected_delivery_date_xpath)
-            all_references_elements = dom.xpath(all_references_xpath)
-            signature_elements = dom.xpath(signature_xpath)
+            match = re.search(r'\b\d{15}\b', text)
+            if match:
+                bol_number = match.group(0)
+                output_path = os.path.join(temp_dir, f"{bol_number}.pdf")
 
-            # Extract Actual Delivery Date
-            for element in actual_delivery_date_elements:
-                actual_delivery_date = element.text.strip() if element.text else ''
-                data_dict[order_number]["ACTUAL DELIVERY DATE"] = actual_delivery_date
+                new_doc = fitz.open()
+                new_doc.insert_pdf(doc, from_page=page_num, to_page=page_num)
+                new_doc.save(output_path)
+                new_doc.close()
 
-            # Extract Expected Delivery Date
-            for element in expected_delivery_date_elements:
-                expected_delivery_date = element.text.strip() if element.text else ''
-                data_dict[order_number]["EXPECTED DELIVERY DATE"] = expected_delivery_date
+                saved_files.append(output_path)
+            else:
+                st.warning(f"No Bill of Lading Number found on page {page_num + 1}")
 
-            # Extract All References, format as comma-separated values, and replace / with -
-            for element in all_references_elements:
-                all_references_lines = [line.strip().replace('/', '-') for line in element.itertext() if line.strip()]
-                all_references = ', '.join(all_references_lines)
-                data_dict[order_number]["ALL REFERENCES"] = all_references
+        doc.close()
 
-            # Extract Signature
-            for element in signature_elements:
-                signature = element.text.strip() if element.text else ''
-                data_dict[order_number]["SIGNATURE"] = signature
-        else:
-            st.error(f"Failed to retrieve data for order number {order_number}. Status code: {response.status_code}")
+        zip_path = os.path.join(temp_dir, "renamed_bols.zip")
+        with ZipFile(zip_path, 'w') as zipf:
+            for file_path in saved_files:
+                zipf.write(file_path, arcname=os.path.basename(file_path))
 
-    # Save the extracted data to a CSV file with headers
-    output_csv = io.StringIO()
-    writer = csv.writer(output_csv)
-    # Write the header
-    header = ["Tracking Information", "ACTUAL DELIVERY DATE", "EXPECTED DELIVERY DATE", "ALL REFERENCES", "SIGNATURE"]
-    writer.writerow(header)
-    
-    # Write the data rows
-    for order_number in order_numbers:
-        row = [order_number, 
-               data_dict[order_number]["ACTUAL DELIVERY DATE"], 
-               data_dict[order_number]["EXPECTED DELIVERY DATE"], 
-               data_dict[order_number]["ALL REFERENCES"], 
-               data_dict[order_number]["SIGNATURE"]]
-        writer.writerow(row)
-
-    output_csv.seek(0)
-    return output_csv.getvalue().encode('utf-8')
-
-def process_asn_file(references_csv, asn_csv):
-    # Read the references from the CSV file and create individual rows for each comma-separated reference
-    individual_references = []
-    references_csv.seek(0)
-    reader = csv.reader(io.StringIO(references_csv.read().decode('utf-8')))
-    headers = next(reader)
-    
-    for row in reader:
-        references = row[3].split(', ')  # "ALL REFERENCES" is now the fourth column
-        for reference in references:
-            individual_references.append(reference.replace('-', '/'))
-
-    # Replace all "/" with "-" in the individual references
-    individual_references = [ref.replace('/', '-') for ref in individual_references]
-
-    # Read the ASN file and cross-reference with the individual references
-    matching_rows = []
-    asn_csv.seek(0)
-    reader = csv.reader(io.StringIO(asn_csv.read().decode('utf-8')))
-    cisco_headers = next(reader)
-    
-    for row in reader:
-        if len(row) > 5:
-            cisco_reference = row[5].replace('/', '-')
-            if cisco_reference in individual_references:
-                matching_rows.append(row)
-
-    # Save the matching rows to a new CSV file
-    output_csv = io.StringIO()
-    writer = csv.writer(output_csv)
-    writer.writerow(cisco_headers)
-    writer.writerows(matching_rows)
-
-    output_csv.seek(0)
-    return output_csv.getvalue().encode('utf-8')
-
-st.title("Order Tracking Information Extractor")
-
-order_numbers_input = st.text_area("Scan or Enter Order Numbers (one per line)")
-
-asn_file = st.file_uploader("Upload ASN File", type="csv")
-
-if st.button("Process Order Numbers"):
-    if order_numbers_input and asn_file:
-        order_numbers = [num.strip() for num in order_numbers_input.split('\n') if num.strip()]
-        references_csv = process_order_numbers(order_numbers)
-        final_output_csv = process_asn_file(io.BytesIO(references_csv), asn_file)
-        
-        # Store the CSV data in session state
-        st.session_state['references_csv'] = references_csv
-        st.session_state['final_output_csv'] = final_output_csv
-        
-        st.success("Data has been successfully processed!")
-
-# Check if the CSV data is available in session state
-if 'references_csv' in st.session_state and 'final_output_csv' in st.session_state:
-    st.download_button(
-        label="Download Tracking Information",
-        data=st.session_state['references_csv'],
-        file_name="Tracking_Information.csv",
-        mime="text/csv"
-    )
-    
-    st.download_button(
-        label="Download Audit CSV",
-        data=st.session_state['final_output_csv'],
-        file_name="Audit.csv",
-        mime="text/csv"
-    )
+        with open(zip_path, "rb") as f:
+            st.download_button(
+                label="Download Renamed PDFs as ZIP",
+                data=f,
+                file_name="renamed_bols.zip",
+                mime="application/zip"
+            )
