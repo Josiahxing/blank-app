@@ -1,2 +1,6 @@
 streamlit
 pymupdf
+pandas
+requests
+lxml
+openpyxl
