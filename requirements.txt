@@ -4,4 +4,3 @@ pandas
 requests
 lxml
 openpyxl
-io
