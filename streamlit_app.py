@@ -2,68 +2,67 @@ import streamlit as st
 import pandas as pd
 import requests
 from lxml import html
-from io import BytesIO
+from io import StringIO
 
+# Function to fetch data for a single carton ID
 def fetch_carton_data(carton_id):
-    session = requests.Session()
-    url = "http://207.141.233.26/PM/rpttssbycartonidblank.asp"
-    session.get(url)
-    data = {
-        "partnos": carton_id,
-        "bMouseOver": "TRUE",
-        "btnSubmit": "Submit"
-    }
-    response = session.post(url, data=data)
-    tree = html.fromstring(response.content)
+    try:
+        session = requests.Session()
+        url = "http://207.141.233.26/PM/rpttssbycartonidblank.asp"
+        session.get(url, timeout=10)
+        data = {
+            "partnos": carton_id,
+            "bMouseOver": "TRUE",
+            "btnSubmit": "Submit"
+        }
+        response = session.post(url, data=data, timeout=10)
+        tree = html.fromstring(response.content)
 
-    fields = {
-        "SO": "//table[2]/tr/td[1]/h4/text()",
-        "SS": "//table[2]/tr/td[2]/h4/text()",
-        "CONE NO": "//table[2]/tr/td[3]/h4/text()",
-        "FCD": "//table[2]/tr/td[4]/h4/text()",
-        "BISI Date": "//table[2]/tr/td[5]/h4/text()",
-        "Carton Qty": "//table[3]/tr/td/h4/text()",
-        "Order No": "//table[4]/tr[3]/td[1]/font/b/text()",
-        "Line": "//table[4]/tr[3]/td[2]/font/b/text()",
-        "BU": "//table[4]/tr[3]/td[3]/font/b/text()",
-        "Workorder": "//table[4]/tr[3]/td[4]/a/font/b/text()",
-        "SKU": "//table[4]/tr[3]/td[5]/font/b/text()",
-        "Complete?": "//table[4]/tr[3]/td[6]/font/b/text()",
-        "Total Cartons": "//table[4]/tr[3]/td[7]/font/b/text()",
-        "Finished Cartons": "//table[4]/tr[3]/td[8]/font/b/text()"
-    }
+        fields = {
+            "SO": "//table[2]/tr/td[1]/h4/text()",
+            "SS": "//table[2]/tr/td[2]/h4/text()",
+            "CONE NO": "//table[2]/tr/td[3]/h4/text()",
+            "FCD": "//table[2]/tr/td[4]/h4/text()",
+            "BISI Date": "//table[2]/tr/td[5]/h4/text()",
+            "Carton Qty": "//table[3]/tr/td/h4/text()",
+            "Order No": "//table[4]/tr[3]/td[1]/font/b/text()",
+            "Line": "//table[4]/tr[3]/td[2]/font/b/text()",
+            "BU": "//table[4]/tr[3]/td[3]/font/b/text()",
+            "Workorder": "//table[4]/tr[3]/td[4]/a/font/b/text()",
+            "SKU": "//table[4]/tr[3]/td[5]/font/b/text()",
+            "Complete?": "//table[4]/tr[3]/td[6]/font/b/text()",
+            "Total Cartons": "//table[4]/tr[3]/td[7]/font/b/text()",
+            "Finished Cartons": "//table[4]/tr[3]/td[8]/font/b/text()"
+        }
 
-    result = {}
-    for label, xpath in fields.items():
-        extracted = tree.xpath(xpath)
-        result[label] = extracted[0].strip() if extracted else "Not Found"
-    return result
+        result = {"Carton_ID": carton_id}
+        for label, xpath in fields.items():
+            extracted = tree.xpath(xpath)
+            result[label] = extracted[0].strip() if extracted else "Not Found"
+        return result
+    except Exception as e:
+        return {"Carton_ID": carton_id, "Error": str(e)}
 
-st.title("📦 Carton ID Data Enrichment Tool")
+# Streamlit UI
+st.title("📦 Carton ID Data Extractor")
 
-uploaded_file = st.file_uploader("Upload your file with Carton IDs", type=["csv", "xlsx"])
+st.write("Paste your list of Carton IDs below (one per line):")
+carton_input = st.text_area("Carton IDs", height=200)
 
-if uploaded_file:
-    if uploaded_file.name.endswith(".csv"):
-        df = pd.read_csv(uploaded_file)
+if st.button("Run Extraction"):
+    carton_ids = [line.strip() for line in carton_input.splitlines() if line.strip()]
+    if not carton_ids:
+        st.warning("Please enter at least one Carton ID.")
     else:
-        df = pd.read_excel(uploaded_file, engine="openpyxl")
+        st.info(f"Processing {len(carton_ids)} Carton IDs...")
+        results = []
+        progress = st.progress(0)
+        for i, carton_id in enumerate(carton_ids):
+            results.append(fetch_carton_data(carton_id))
+            progress.progress((i + 1) / len(carton_ids))
+        df = pd.DataFrame(results)
+        st.success("Extraction complete!")
+        st.dataframe(df)
 
-    if "Carton_ID" not in df.columns:
-        st.error("The uploaded file must contain a 'Carton_ID' column.")
-    else:
-        st.info("Processing carton IDs. This may take a moment...")
-
-        enriched_data = []
-        for carton_id in df["Carton_ID"]:
-            enriched_data.append(fetch_carton_data(str(carton_id)))
-
-        enriched_df = pd.DataFrame(enriched_data)
-        final_df = pd.concat([df.reset_index(drop=True), enriched_df], axis=1)
-
-        st.subheader("Enriched Data Preview")
-        st.dataframe(final_df)
-
-        output = BytesIO()
-        final_df.to_excel(output, index=False, engine="openpyxl")
-        st.download_button("Download Enriched File", data=output.getvalue(), file_name="enriched_data.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        csv_data = df.to_csv(index=False)
+        st.download_button("Download CSV", data=csv_data, file_name="carton_data.csv", mime="text/csv")
